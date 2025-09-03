@@ -4,8 +4,8 @@ import { FiSun, FiMoon, FiPlus, FiDownload, FiSearch, FiLogOut, FiUser } from 'r
 import { useAuth } from '../contexts/AuthContext';
 import Dashboard from './Dashboard';
 import TransactionForm from './TransactionForm';
-import TransactionList from './TransactionList';
 import Reports from './Reports';
+import RecurringTransactions from './RecurringTransactions';
 
 // Sample categories
 const CATEGORIES = {
@@ -32,6 +32,8 @@ const ExpenseTracker = () => {
   const [activeTab, setActiveTab] = useState('dashboard');
   const [showTransactionForm, setShowTransactionForm] = useState(false);
   const [editingTransaction, setEditingTransaction] = useState(null);
+  
+  // Reports filter state (only used in Reports tab)
   const [searchTerm, setSearchTerm] = useState('');
   const [filterType, setFilterType] = useState('all'); // all, income, expense
   const [filterCategory, setFilterCategory] = useState('all');
@@ -148,8 +150,25 @@ const ExpenseTracker = () => {
     return filtered.sort((a, b) => new Date(b.date) - new Date(a.date));
   }, [transactions, searchTerm, filterType, filterCategory, dateRange]);
 
-  // Calculate totals
-  const totals = useMemo(() => {
+  // Calculate overall totals (all transactions - for dashboard)
+  const overallTotals = useMemo(() => {
+    const income = transactions
+      .filter(t => t.type === 'income')
+      .reduce((sum, t) => sum + t.amount, 0);
+    
+    const expense = transactions
+      .filter(t => t.type === 'expense')
+      .reduce((sum, t) => sum + t.amount, 0);
+    
+    return {
+      income,
+      expense,
+      balance: income - expense
+    };
+  }, [transactions]);
+
+  // Calculate filtered totals (for current view)
+  const filteredTotals = useMemo(() => {
     const income = filteredTransactions
       .filter(t => t.type === 'income')
       .reduce((sum, t) => sum + t.amount, 0);
@@ -240,7 +259,7 @@ const ExpenseTracker = () => {
         <nav className="nav-tabs">
           {[
             { id: 'dashboard', label: 'Dashboard' },
-            { id: 'transactions', label: 'Transactions' },
+            { id: 'recurring', label: 'Recurring' },
             { id: 'reports', label: 'Reports' }
           ].map(tab => (
             <button
@@ -254,7 +273,7 @@ const ExpenseTracker = () => {
         </nav>
 
         {/* Search and Filters */}
-        {(activeTab === 'transactions' || activeTab === 'reports') && (
+        {activeTab === 'reports' && (
           <div className="filters-section">
             <div className="search-box">
               <FiSearch className="search-icon" />
@@ -312,24 +331,23 @@ const ExpenseTracker = () => {
           {activeTab === 'dashboard' && (
             <Dashboard 
               transactions={transactions}
-              totals={totals}
+              totals={overallTotals}
               categories={CATEGORIES}
+              onEdit={handleEditTransaction}
+              onDelete={handleDeleteTransaction}
             />
           )}
           
-          {activeTab === 'transactions' && (
-            <TransactionList
-              transactions={filteredTransactions}
-              totals={totals}
-              onEdit={handleEditTransaction}
-              onDelete={handleDeleteTransaction}
+          {activeTab === 'recurring' && (
+            <RecurringTransactions
+              onAddTransaction={handleSaveTransaction}
             />
           )}
           
           {activeTab === 'reports' && (
             <Reports
               transactions={filteredTransactions}
-              totals={totals}
+              totals={filteredTotals}
               categories={CATEGORIES}
             />
           )}

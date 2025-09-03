@@ -13,7 +13,7 @@ import {
   Legend,
   ArcElement,
 } from 'chart.js';
-import { FiTrendingUp, FiTrendingDown, FiDollarSign, FiPieChart, FiBarChart, FiActivity } from 'react-icons/fi';
+import { FiTrendingUp, FiTrendingDown, FiDollarSign, FiPieChart, FiBarChart, FiActivity, FiEdit3, FiTrash2 } from 'react-icons/fi';
 
 // Register Chart.js components
 ChartJS.register(
@@ -28,7 +28,7 @@ ChartJS.register(
   ArcElement
 );
 
-const Dashboard = ({ transactions, totals, categories }) => {
+const Dashboard = ({ transactions, totals, categories, onEdit, onDelete }) => {
   // Calculate today's transactions
   const todayTransactions = useMemo(() => {
     const today = new Date();
@@ -381,6 +381,24 @@ const Dashboard = ({ transactions, totals, categories }) => {
                   {transaction.type === 'income' ? '+' : '-'}
                   {formatCurrency(transaction.amount)}
                 </div>
+                {onEdit && onDelete && (
+                  <div className="transaction-actions">
+                    <button
+                      className="btn btn-small"
+                      onClick={() => onEdit(transaction)}
+                      title="Edit Transaction"
+                    >
+                      <FiEdit3 />
+                    </button>
+                    <button
+                      className="btn btn-small btn-danger"
+                      onClick={() => onDelete(transaction.id)}
+                      title="Delete Transaction"
+                    >
+                      <FiTrash2 />
+                    </button>
+                  </div>
+                )}
               </div>
             ))
           ) : (

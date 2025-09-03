@@ -3,7 +3,6 @@ import { AuthProvider, useAuth } from './contexts/AuthContext';
 import Login from './components/Login';
 import Register from './components/Register';
 import ExpenseTracker from './components/ExpenseTracker';
-import './App.css';
 
 const AuthenticatedApp = () => {
   const { user, isLoading } = useAuth();
