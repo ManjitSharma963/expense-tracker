@@ -3,9 +3,13 @@ import { AuthProvider, useAuth } from './contexts/AuthContext';
 import Login from './components/Login';
 import Register from './components/Register';
 import ExpenseTracker from './components/ExpenseTracker';
+import OfflineNotice from './components/OfflineNotice';
+import ErrorBoundary from './components/ErrorBoundary';
+import { useBackendStatus } from './hooks/useBackendStatus';
 
 const AuthenticatedApp = () => {
   const { user, isLoading } = useAuth();
+  const { isOnline } = useBackendStatus();
 
   if (isLoading) {
     return (
@@ -16,11 +20,12 @@ const AuthenticatedApp = () => {
     );
   }
 
-  if (!user) {
-    return <AuthFlow />;
-  }
-
-  return <ExpenseTracker />;
+  return (
+    <>
+      <OfflineNotice isOnline={isOnline} />
+      {!user ? <AuthFlow /> : <ExpenseTracker />}
+    </>
+  );
 };
 
 const AuthFlow = () => {
@@ -50,9 +55,11 @@ const AuthFlow = () => {
 
 function App() {
   return (
-    <AuthProvider>
-      <AuthenticatedApp />
-    </AuthProvider>
+    <ErrorBoundary>
+      <AuthProvider>
+        <AuthenticatedApp />
+      </AuthProvider>
+    </ErrorBoundary>
   );
 }
 

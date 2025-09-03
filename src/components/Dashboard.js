@@ -28,7 +28,7 @@ ChartJS.register(
   ArcElement
 );
 
-const Dashboard = ({ transactions, totals, categories, onEdit, onDelete }) => {
+const Dashboard = ({ transactions, totals, categories, dashboardData, onEdit, onDelete, isLoading, error }) => {
   // Calculate today's transactions
   const todayTransactions = useMemo(() => {
     const today = new Date();
@@ -57,15 +57,23 @@ const Dashboard = ({ transactions, totals, categories, onEdit, onDelete }) => {
     };
   }, [todayTransactions]);
 
-  // Category breakdown for pie chart
+  // Category breakdown for pie chart - use API data if available
   const categoryData = useMemo(() => {
-    const expensesByCategory = {};
+    let expensesByCategory = {};
     
-    transactions
-      .filter(t => t.type === 'expense')
-      .forEach(t => {
-        expensesByCategory[t.category] = (expensesByCategory[t.category] || 0) + t.amount;
+    if (dashboardData && dashboardData.categoryBreakdowns) {
+      // Use API data
+      dashboardData.categoryBreakdowns.forEach(item => {
+        expensesByCategory[item.category] = item.amount;
       });
+    } else {
+      // Fallback to local calculation
+      transactions
+        .filter(t => t.type === 'expense')
+        .forEach(t => {
+          expensesByCategory[t.category] = (expensesByCategory[t.category] || 0) + t.amount;
+        });
+    }
 
     const labels = Object.keys(expensesByCategory);
     const data = Object.values(expensesByCategory);
@@ -84,10 +92,42 @@ const Dashboard = ({ transactions, totals, categories, onEdit, onDelete }) => {
         hoverOffset: 4
       }]
     };
-  }, [transactions]);
+  }, [dashboardData, transactions]);
 
-  // Monthly trend data for line chart
+  // Monthly trend data for line chart - use API data if available
   const monthlyTrendData = useMemo(() => {
+    if (dashboardData && dashboardData.monthlyTrends) {
+      // Use API data
+      const labels = dashboardData.monthlyTrends.map(trend => 
+        format(parseISO(trend.month + '-01'), 'MMM yyyy')
+      );
+      const incomeData = dashboardData.monthlyTrends.map(trend => trend.income);
+      const expenseData = dashboardData.monthlyTrends.map(trend => trend.expenses);
+      
+      return {
+        labels,
+        datasets: [
+          {
+            label: 'Income',
+            data: incomeData,
+            borderColor: '#2ecc71',
+            backgroundColor: 'rgba(46, 204, 113, 0.1)',
+            tension: 0.4,
+            fill: true
+          },
+          {
+            label: 'Expenses',
+            data: expenseData,
+            borderColor: '#e74c3c',
+            backgroundColor: 'rgba(231, 76, 60, 0.1)',
+            tension: 0.4,
+            fill: true
+          }
+        ]
+      };
+    }
+    
+    // Fallback to local calculation
     const last6Months = [];
     const monthlyData = { income: [], expense: [] };
     
@@ -136,7 +176,7 @@ const Dashboard = ({ transactions, totals, categories, onEdit, onDelete }) => {
         }
       ]
     };
-  }, [transactions]);
+  }, [dashboardData, transactions]);
 
   // Weekly comparison data for bar chart
   const weeklyComparisonData = useMemo(() => {
@@ -273,6 +313,32 @@ const Dashboard = ({ transactions, totals, categories, onEdit, onDelete }) => {
   };
 
   const recentTransactions = transactions.slice(0, 5);
+
+  // Show loading state
+  if (isLoading) {
+    return (
+      <div className="dashboard fade-in">
+        <div className="loading-state">
+          <div className="spinner"></div>
+          <p>Loading dashboard data...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Show error state
+  if (error) {
+    return (
+      <div className="dashboard fade-in">
+        <div className="error-state">
+          <p>Error loading dashboard: {error}</p>
+          <button className="btn btn-primary" onClick={() => window.location.reload()}>
+            Retry
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="dashboard fade-in">

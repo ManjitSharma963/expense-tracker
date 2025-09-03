@@ -71,32 +71,36 @@ const Register = ({ onRegister, onSwitchToLogin }) => {
 
     setIsLoading(true);
     
-    // Simulate API call
-    setTimeout(() => {
-      const users = JSON.parse(localStorage.getItem('expense-tracker-users') || '[]');
-      
-      // Check if user already exists
-      if (users.find(u => u.email === formData.email)) {
-        setErrors({ general: 'An account with this email already exists' });
-        setIsLoading(false);
-        return;
-      }
-
-      // Create new user
-      const newUser = {
-        id: Date.now().toString(),
+    try {
+      await onRegister({
         name: formData.name.trim(),
         email: formData.email.toLowerCase(),
-        password: formData.password,
-        createdAt: new Date().toISOString()
-      };
-
-      users.push(newUser);
-      localStorage.setItem('expense-tracker-users', JSON.stringify(users));
+        password: formData.password
+      });
+    } catch (error) {
+      console.error('Registration failed:', error);
       
-      onRegister(newUser);
+      // Handle validation errors
+      if (error.errors && error.errors.length > 0) {
+        const fieldErrors = {};
+        error.errors.forEach(errorMsg => {
+          if (errorMsg.includes('email')) {
+            fieldErrors.email = errorMsg;
+          } else if (errorMsg.includes('name')) {
+            fieldErrors.name = errorMsg;
+          } else if (errorMsg.includes('password')) {
+            fieldErrors.password = errorMsg;
+          }
+        });
+        setErrors(fieldErrors);
+      } else {
+        setErrors({ 
+          general: error.message || 'Registration failed. Please try again.' 
+        });
+      }
+    } finally {
       setIsLoading(false);
-    }, 1000);
+    }
   };
 
   return (

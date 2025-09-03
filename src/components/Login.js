@@ -54,18 +54,19 @@ const Login = ({ onLogin, onSwitchToRegister }) => {
 
     setIsLoading(true);
     
-    // Simulate API call
-    setTimeout(() => {
-      const users = JSON.parse(localStorage.getItem('expense-tracker-users') || '[]');
-      const user = users.find(u => u.email === formData.email && u.password === formData.password);
-      
-      if (user) {
-        onLogin(user);
-      } else {
-        setErrors({ general: 'Invalid email or password' });
-      }
+    try {
+      await onLogin({
+        email: formData.email,
+        password: formData.password
+      });
+    } catch (error) {
+      console.error('Login failed:', error);
+      setErrors({ 
+        general: error.message || 'Invalid email or password' 
+      });
+    } finally {
       setIsLoading(false);
-    }, 1000);
+    }
   };
 
   return (

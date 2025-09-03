@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { format, addMonths, isAfter, isBefore, parseISO } from 'date-fns';
+import { format, parseISO } from 'date-fns';
+import { recurringTransactionAPI } from '../services/api';
 import { 
   FiPlus, 
   FiEdit3, 
@@ -34,6 +35,8 @@ const RecurringTransactions = ({ onAddTransaction }) => {
   const [recurringTransactions, setRecurringTransactions] = useState([]);
   const [showForm, setShowForm] = useState(false);
   const [editingTransaction, setEditingTransaction] = useState(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState(null);
   const [formData, setFormData] = useState({
     type: 'expense',
     description: '',
@@ -47,73 +50,29 @@ const RecurringTransactions = ({ onAddTransaction }) => {
     nextDue: null
   });
 
-  // Load recurring transactions from localStorage
+  // Load recurring transactions from API
   useEffect(() => {
-    const saved = localStorage.getItem('recurringTransactions');
-    if (saved) {
-      setRecurringTransactions(JSON.parse(saved));
-    }
+    loadRecurringTransactions();
   }, []);
 
-  // Save recurring transactions to localStorage
-  useEffect(() => {
-    localStorage.setItem('recurringTransactions', JSON.stringify(recurringTransactions));
-  }, [recurringTransactions]);
-
-  // Process recurring transactions automatically
-  useEffect(() => {
-    const processRecurringTransactions = () => {
-      const today = new Date();
-      const updatedTransactions = [...recurringTransactions];
-      let hasUpdates = false;
-
-      updatedTransactions.forEach((recurring, index) => {
-        if (!recurring.isActive) return;
-
-        const nextDue = recurring.nextDue ? parseISO(recurring.nextDue) : parseISO(recurring.startDate);
-        
-        if (isAfter(today, nextDue) || format(today, 'yyyy-MM-dd') === format(nextDue, 'yyyy-MM-dd')) {
-          // Create the actual transaction
-          const newTransaction = {
-            id: Date.now() + Math.random(),
-            type: recurring.type,
-            description: `${recurring.description} (Auto)`,
-            amount: parseFloat(recurring.amount),
-            category: recurring.category,
-            date: format(today, 'yyyy-MM-dd'),
-            isRecurring: true,
-            recurringId: recurring.id
-          };
-
-          // Add to main transactions
-          onAddTransaction(newTransaction);
-
-          // Update recurring transaction
-          const nextDueDate = addMonths(nextDue, recurring.frequency === 'monthly' ? 1 : 
-                                      recurring.frequency === 'weekly' ? 0.25 : 
-                                      recurring.frequency === 'quarterly' ? 3 : 12);
-
-          updatedTransactions[index] = {
-            ...recurring,
-            lastProcessed: format(today, 'yyyy-MM-dd'),
-            nextDue: format(nextDueDate, 'yyyy-MM-dd')
-          };
-
-          hasUpdates = true;
-        }
-      });
-
-      if (hasUpdates) {
-        setRecurringTransactions(updatedTransactions);
+  const loadRecurringTransactions = async () => {
+    setIsLoading(true);
+    setError(null);
+    
+    try {
+      const response = await recurringTransactionAPI.getRecurringTransactions();
+      if (response.success) {
+        setRecurringTransactions(response.data.recurringTransactions || []);
       }
-    };
+    } catch (error) {
+      console.error('Failed to load recurring transactions:', error);
+      setError(error.message);
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
-    // Process on component mount and then every hour
-    processRecurringTransactions();
-    const interval = setInterval(processRecurringTransactions, 60 * 60 * 1000);
-
-    return () => clearInterval(interval);
-  }, [recurringTransactions, onAddTransaction]);
+  // Note: Automatic processing is now handled by the backend scheduler
 
   const handleInputChange = (e) => {
     const { name, value, type, checked } = e.target;
@@ -124,18 +83,9 @@ const RecurringTransactions = ({ onAddTransaction }) => {
     }));
   };
 
-  const calculateNextDue = (startDate, frequency) => {
-    const start = parseISO(startDate);
-    const today = new Date();
-    
-    if (isBefore(start, today)) {
-      return format(today, 'yyyy-MM-dd');
-    }
-    
-    return startDate;
-  };
 
-  const handleSubmit = (e) => {
+
+  const handleSubmit = async (e) => {
     e.preventDefault();
     
     if (!formData.description || !formData.amount || !formData.category) {
@@ -143,25 +93,38 @@ const RecurringTransactions = ({ onAddTransaction }) => {
       return;
     }
 
-    const nextDue = calculateNextDue(formData.startDate, formData.frequency);
+    setIsLoading(true);
     
-    const recurringTransaction = {
-      id: editingTransaction ? editingTransaction.id : Date.now(),
-      ...formData,
-      amount: parseFloat(formData.amount),
-      nextDue,
-      createdAt: editingTransaction ? editingTransaction.createdAt : new Date().toISOString()
-    };
+    try {
+      const transactionData = {
+        ...formData,
+        amount: parseFloat(formData.amount),
+      };
 
-    if (editingTransaction) {
-      setRecurringTransactions(prev => 
-        prev.map(t => t.id === editingTransaction.id ? recurringTransaction : t)
-      );
-    } else {
-      setRecurringTransactions(prev => [...prev, recurringTransaction]);
+      if (editingTransaction) {
+        const response = await recurringTransactionAPI.updateRecurringTransaction(
+          editingTransaction.id, 
+          transactionData
+        );
+        if (response.success) {
+          setRecurringTransactions(prev => 
+            prev.map(t => t.id === editingTransaction.id ? response.data : t)
+          );
+        }
+      } else {
+        const response = await recurringTransactionAPI.createRecurringTransaction(transactionData);
+        if (response.success) {
+          setRecurringTransactions(prev => [...prev, response.data]);
+        }
+      }
+
+      resetForm();
+    } catch (error) {
+      console.error('Failed to save recurring transaction:', error);
+      alert(`Failed to ${editingTransaction ? 'update' : 'create'} recurring transaction: ${error.message}`);
+    } finally {
+      setIsLoading(false);
     }
-
-    resetForm();
   };
 
   const resetForm = () => {
@@ -191,47 +154,53 @@ const RecurringTransactions = ({ onAddTransaction }) => {
     setShowForm(true);
   };
 
-  const handleDelete = (id) => {
+  const handleDelete = async (id) => {
     if (window.confirm('Are you sure you want to delete this recurring transaction?')) {
-      setRecurringTransactions(prev => prev.filter(t => t.id !== id));
+      try {
+        const response = await recurringTransactionAPI.deleteRecurringTransaction(id);
+        if (response.success) {
+          setRecurringTransactions(prev => prev.filter(t => t.id !== id));
+        }
+      } catch (error) {
+        console.error('Failed to delete recurring transaction:', error);
+        alert(`Failed to delete recurring transaction: ${error.message}`);
+      }
     }
   };
 
-  const toggleActive = (id) => {
-    setRecurringTransactions(prev =>
-      prev.map(t => t.id === id ? { ...t, isActive: !t.isActive } : t)
-    );
+  const toggleActive = async (id) => {
+    const transaction = recurringTransactions.find(t => t.id === id);
+    if (!transaction) return;
+
+    try {
+      const updatedTransaction = { ...transaction, isActive: !transaction.isActive };
+      const response = await recurringTransactionAPI.updateRecurringTransaction(id, updatedTransaction);
+      
+      if (response.success) {
+        setRecurringTransactions(prev =>
+          prev.map(t => t.id === id ? response.data : t)
+        );
+      }
+    } catch (error) {
+      console.error('Failed to toggle recurring transaction:', error);
+      alert(`Failed to ${transaction.isActive ? 'pause' : 'resume'} recurring transaction: ${error.message}`);
+    }
   };
 
-  const processNow = (id) => {
-    const recurring = recurringTransactions.find(t => t.id === id);
-    if (!recurring) return;
-
-    const newTransaction = {
-      id: Date.now() + Math.random(),
-      type: recurring.type,
-      description: `${recurring.description} (Manual)`,
-      amount: parseFloat(recurring.amount),
-      category: recurring.category,
-      date: format(new Date(), 'yyyy-MM-dd'),
-      isRecurring: true,
-      recurringId: recurring.id
-    };
-
-    onAddTransaction(newTransaction);
-
-    // Update next due date
-    const nextDueDate = addMonths(new Date(), recurring.frequency === 'monthly' ? 1 : 
-                                recurring.frequency === 'weekly' ? 0.25 : 
-                                recurring.frequency === 'quarterly' ? 3 : 12);
-
-    setRecurringTransactions(prev =>
-      prev.map(t => t.id === id ? {
-        ...t,
-        lastProcessed: format(new Date(), 'yyyy-MM-dd'),
-        nextDue: format(nextDueDate, 'yyyy-MM-dd')
-      } : t)
-    );
+  const processNow = async (id) => {
+    try {
+      const response = await recurringTransactionAPI.processRecurringTransaction(id);
+      if (response.success) {
+        // Add the created transaction to the main transactions list
+        onAddTransaction(response.data);
+        
+        // Reload recurring transactions to get updated nextDue date
+        loadRecurringTransactions();
+      }
+    } catch (error) {
+      console.error('Failed to process recurring transaction:', error);
+      alert(`Failed to process recurring transaction: ${error.message}`);
+    }
   };
 
   const formatCurrency = (amount) => {
@@ -260,6 +229,32 @@ const RecurringTransactions = ({ onAddTransaction }) => {
       .slice(0, 5);
   }, [activeRecurring]);
 
+  // Show loading state
+  if (isLoading && recurringTransactions.length === 0) {
+    return (
+      <div className="recurring-transactions fade-in">
+        <div className="loading-state">
+          <div className="spinner"></div>
+          <p>Loading recurring transactions...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Show error state
+  if (error && recurringTransactions.length === 0) {
+    return (
+      <div className="recurring-transactions fade-in">
+        <div className="error-state">
+          <p>Error loading recurring transactions: {error}</p>
+          <button className="btn btn-primary" onClick={loadRecurringTransactions}>
+            Retry
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="recurring-transactions fade-in">
       {/* Header */}
@@ -271,6 +266,7 @@ const RecurringTransactions = ({ onAddTransaction }) => {
           <button 
             className="btn btn-primary"
             onClick={() => setShowForm(true)}
+            disabled={isLoading}
           >
             <FiPlus /> Add Recurring
           </button>
