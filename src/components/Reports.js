@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { format, startOfWeek, endOfWeek, startOfMonth, endOfMonth, startOfYear, endOfYear, isWithinInterval, parseISO, subDays, subMonths } from 'date-fns';
 import { Bar, Line, Doughnut } from 'react-chartjs-2';
-import { FiBarChart, FiTrendingUp, FiPieChart, FiCalendar, FiDownload, FiFileText } from 'react-icons/fi';
+import { FiBarChart, FiTrendingUp, FiPieChart, FiDownload, FiFileText } from 'react-icons/fi';
 
 const Reports = ({ transactions, totals, categories }) => {
   const [reportPeriod, setReportPeriod] = useState('month'); // week, month, year, custom
